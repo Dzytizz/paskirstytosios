@@ -3,10 +3,8 @@ using System;
 
 namespace server
 {
-    public class Calculator
+    public class Calculator : ICalculator
     {
-        public decimal LastAnswer { get; private set; }
-
         public decimal Add(decimal a, decimal b) => a + b;
         public decimal Subtract(decimal a, decimal b) => a - b;
         public decimal Multiply(decimal a, decimal b) => a * b;
@@ -17,22 +15,16 @@ namespace server
             switch (op)
             {
                 case Operation.Add:
-                    LastAnswer = Add(a, b);
-                    break;
+                    return Add(a, b);
                 case Operation.Subtract:
-                    LastAnswer = Subtract(a, b);
-                    break;
+                    return Subtract(a, b);  
                 case Operation.Multiply:
-                    LastAnswer = Multiply(a, b);
-                    break;
+                    return Multiply(a, b);
                 case Operation.Divide:
-                    LastAnswer = Divide(a, b);
-                    break;
+                    return Divide(a, b);
                 default:
                     throw new ArgumentException("Invalid operator");
             }
-
-            return LastAnswer;
         }
     }
 }

@@ -8,30 +8,33 @@ namespace server
 {
     internal class Server
     {
+        private const int Port = 12345;
         private const int PacketSize = 64;
-        private static HashSet<IPEndPoint> connectedClients = new();
 
-        static void Main(string[] args)
+        private static UdpClient listener;
+        private static HashSet<IPEndPoint> clientEndpoints;
+
+        static async Task Main(string[] args)
         {
-            int port = 12345;
-            UdpClient listener = new UdpClient(port);
-            Console.WriteLine($"Server is listening on port {port}.");
-            IPEndPoint clientEndPoint = new IPEndPoint(IPAddress.Any, port);
+            listener = new UdpClient(Port);
+            clientEndpoints = new HashSet<IPEndPoint>();
+            Console.WriteLine($"Server is listening on port {Port}.");
 
             try
             {
                 while (true)
                 {
                     Console.WriteLine("Waiting for requests.");
-                    byte[] receivedBytes = listener.Receive(ref clientEndPoint);
-                    if (!connectedClients.Contains(clientEndPoint))
+                    UdpReceiveResult receiveResult = await listener.ReceiveAsync();
+                    byte[] receivedBytes = receiveResult.Buffer;
+                    if (!clientEndpoints.Contains(receiveResult.RemoteEndPoint))
                     {
-                        connectedClients.Add(clientEndPoint);
-                        Console.WriteLine($"New client sent request to server: {clientEndPoint}.");
+                        clientEndpoints.Add(receiveResult.RemoteEndPoint);
+                        Console.WriteLine($"New client sent request to server: {receiveResult.RemoteEndPoint}.");
                     }
 
                     string receivedData = Encoding.ASCII.GetString(receivedBytes);
-                    Console.WriteLine($"Received data from {clientEndPoint}: {receivedData}");
+                    Console.WriteLine($"Received data from {receiveResult.RemoteEndPoint}: \n{receivedData}");
 
                     XmlSerializer serializer = new XmlSerializer(typeof(Request));
                     Request? request;
@@ -40,7 +43,7 @@ namespace server
                         request = serializer.Deserialize(stringReader) as Request;
                         if (request is null)
                         {
-                            Console.WriteLine($"Invalid request from {clientEndPoint}.");
+                            Console.WriteLine($"Invalid request from {receiveResult.RemoteEndPoint}.");
                             continue;
                         }
                     }
@@ -60,7 +63,7 @@ namespace server
                         response.ExceptionMessage = e.Message;
                     }
 
-                    TrySendToAllClients(listener, response);
+                    await TrySendToAllClients(response);
                 }
             }
             catch (SocketException e)
@@ -73,18 +76,18 @@ namespace server
             }
         }
 
-        private static void TrySendToAllClients(UdpClient listener, Response response)
+        private static async Task TrySendToAllClients(Response response)
         {
             ResponsePacket[] responsePackets = SplitResponseIntoPackets(response, PacketSize);
 
-            foreach (var client in connectedClients)
+            foreach (var client in clientEndpoints)
             {
                 Console.WriteLine($"Sending response to {client} as {responsePackets.Length} packets.");
                 byte[] responseLength = BitConverter.GetBytes(responsePackets.Length);
-                listener.Send(responseLength, responseLength.Length, client);
+                await listener.SendAsync(responseLength, responseLength.Length, client);
                 foreach (ResponsePacket packet in responsePackets)
                 {
-                    listener.Send(packet.Bytes, packet.Bytes.Length, client);
+                    await listener.SendAsync(packet.Bytes, packet.Bytes.Length, client);
                     Console.WriteLine($"Packet {packet.SequenceNumber}: {Encoding.ASCII.GetString(packet.Bytes)}");
                 }
             }

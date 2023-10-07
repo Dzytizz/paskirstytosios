@@ -11,40 +11,43 @@ namespace client
     {
         private static readonly char ExitChar = 'q';
 
-        static void Main(string[] args)
+        static async Task SendRequests (UdpClient udpClient)
         {
-            string serverIP = "127.0.0.1"; // Replace with the server's IP address
-            int serverPort = 12345;
-            UdpClient udpClient = new UdpClient();
-            udpClient.Connect(serverIP, serverPort);
-
-            decimal a = ReadDecimal("Enter first number: ");
-            Operation op = ReadOperator("Enter operator: ");
-            decimal b = ReadDecimal("Enter second number: ");
-
-            Request request = new Request(a, b, op);
-
-            XmlSerializer serializer = new XmlSerializer(typeof(Request));
-            string serializedData;
-            using (MemoryStream memoryStream = new MemoryStream())
-            {
-                serializer.Serialize(memoryStream, request);
-                serializedData = Encoding.UTF8.GetString(memoryStream.ToArray());
-            }
-            byte[] sendData = Encoding.ASCII.GetBytes(serializedData);
-            udpClient.Send(sendData, sendData.Length);
-            Console.WriteLine($"Sent data: {serializedData}");
-
-            IPEndPoint serverEndPoint = new IPEndPoint(IPAddress.Parse(serverIP), serverPort);
             while (true)
             {
-                byte[] receivedData = udpClient.Receive(ref serverEndPoint);
+                decimal a = ReadDecimal("Enter first number: ");
+                Operation op = ReadOperator("Enter operator (+,-,*,/): ");
+                decimal b = ReadDecimal("Enter second number: ");
+
+                Request request = new Request(a, b, op);
+
+                XmlSerializer serializer = new XmlSerializer(typeof(Request));
+                string serializedData;
+                using (MemoryStream memoryStream = new MemoryStream())
+                {
+                    serializer.Serialize(memoryStream, request);
+                    serializedData = Encoding.UTF8.GetString(memoryStream.ToArray());
+                }
+                byte[] sendData = Encoding.ASCII.GetBytes(serializedData);
+                await udpClient.SendAsync(sendData, sendData.Length);
+                Console.WriteLine($"Sent data: {serializedData}");
+            }
+        }
+
+        static async Task ReceiveResponses(UdpClient udpClient) 
+        {
+            while (true)
+            {
+                UdpReceiveResult result = await udpClient.ReceiveAsync();
+                byte[] receivedData = result.Buffer;
                 int responseLength = BitConverter.ToInt32(receivedData);
                 Console.WriteLine($"Received response length: {responseLength}");
+
                 ResponsePacket[] responsePackets = new ResponsePacket[responseLength];
                 for (int i = 0; i < responseLength; i++)
                 {
-                    receivedData = udpClient.Receive(ref serverEndPoint);
+                    result = await udpClient.ReceiveAsync();
+                    receivedData = result.Buffer;
                     responsePackets[i] = new ResponsePacket(i, receivedData);
                     Console.WriteLine($"Received packet: {Encoding.ASCII.GetString(receivedData)}");
                 }
@@ -65,6 +68,18 @@ namespace client
                 }
             }
         }
+
+        static async Task Main(string[] args)
+        {
+            string serverIP = "127.0.0.1"; // Replace with the server's IP address
+            int serverPort = 12345;
+            UdpClient udpClient = new UdpClient();
+            udpClient.Connect(serverIP, serverPort);
+
+            SendRequests(udpClient);
+            ReceiveResponses(udpClient);
+        }
+
 
         private static decimal ReadDecimal(string title)
         {

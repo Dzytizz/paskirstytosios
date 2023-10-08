@@ -38,9 +38,9 @@ namespace client
             }
             catch (OperationCanceledException e)
             {
+                Console.WriteLine("Since math operation was cancelled, switching to response reading mode instead.");
                 while (true) 
                 {
-                    Console.WriteLine("Since math operation was cancelled, switching to response reading mode instead.");
                     ReadResponse();
                 }
             }

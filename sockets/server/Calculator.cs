@@ -2,7 +2,7 @@
 
 namespace server
 {
-    internal class Calculator
+    internal class Calculator : ICalculator
     {
         public decimal Add(decimal a, decimal b) => a + b;
         public decimal Subtract(decimal a, decimal b) => a - b;

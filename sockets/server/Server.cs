@@ -13,7 +13,7 @@ namespace server
 
         private static UdpClient listener;
         private static HashSet<IPEndPoint> clientEndpoints;
-        private static Calculator calculator;
+        private static ICalculator calculator;
 
         static void Main(string[] args)
         {

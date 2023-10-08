@@ -1,8 +1,8 @@
 ﻿using lib;
-using server;
 using System;
 using System.Collections;
 using System.Globalization;
+using System.Runtime.Remoting;
 using System.Runtime.Remoting.Channels;
 using System.Runtime.Remoting.Channels.Tcp;
 using System.Runtime.Serialization.Formatters;
@@ -15,22 +15,12 @@ namespace client
 
         static void Main(string[] args)
         {
-            SoapServerFormatterSinkProvider provider = new SoapServerFormatterSinkProvider();
-            provider.TypeFilterLevel = TypeFilterLevel.Full;
+            Console.WriteLine("Configuring remoting.");
+            RemotingConfiguration.Configure("Client.exe.config", true);
 
-            IDictionary props = new Hashtable();
-            props["name"] = "tcp";
-            props["typeFilterLevel"] = TypeFilterLevel.Full;
-
-            SoapServerFormatterSinkProvider serverProvider = new SoapServerFormatterSinkProvider();
-            SoapClientFormatterSinkProvider clientProvider = new SoapClientFormatterSinkProvider();
-
-            TcpChannel channel = new TcpChannel(null, clientProvider, serverProvider);
-            ChannelServices.RegisterChannel(channel, false);
-
-            RemoteObject remoteObject = (RemoteObject)Activator.GetObject(
-                typeof(RemoteObject),
-                "tcp://localhost:1234/RemoteObject");
+            IRemoteObject remoteObject = (IRemoteObject)Activator.GetObject(
+                typeof(IRemoteObject),
+                "tcp://localhost:12345/RemoteObject");
             if (remoteObject == null)
             {
                 Console.WriteLine("Could not locate TCP server");
@@ -54,7 +44,7 @@ namespace client
             }
             catch (OperationCanceledException)
             {
-                Console.WriteLine("Actions canceled. Exiting.");
+                Console.WriteLine("Math actions canceled. Exiting.");
             }
             catch (Exception e)
             {

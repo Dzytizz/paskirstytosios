@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Xml;
 using System.Xml.Serialization;
-using System.Xml;
 
 namespace lib
 {
@@ -18,7 +13,7 @@ namespace lib
             settings.Indent = true;
             settings.OmitXmlDeclaration = true;
 
-            using (var stream = new StringWriter()) 
+            using (var stream = new StringWriter())
             {
                 using (var writer = XmlWriter.Create(stream, settings))
                 {

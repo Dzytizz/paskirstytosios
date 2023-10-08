@@ -1,6 +1,4 @@
-﻿using System.Xml.Serialization;
-
-namespace lib
+﻿namespace lib
 {
     [Serializable]
     public class ResponsePacket

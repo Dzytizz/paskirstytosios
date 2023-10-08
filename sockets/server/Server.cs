@@ -2,7 +2,6 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Xml.Serialization;
 
 namespace server
 {
@@ -77,7 +76,7 @@ namespace server
         private static void TrySendToAllClients(UdpClient listener, Response response)
         {
             // Split response into packets and randomize (to test udp mechanism in client)
-            ResponsePacket[] responsePackets = SplitResponseIntoPackets(response, PacketSize);  
+            ResponsePacket[] responsePackets = SplitResponseIntoPackets(response, PacketSize);
             responsePackets = responsePackets.OrderBy(x => Guid.NewGuid()).ToArray();
 
             foreach (var client in clientEndpoints)

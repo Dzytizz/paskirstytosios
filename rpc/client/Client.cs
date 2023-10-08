@@ -1,11 +1,7 @@
 ﻿using lib;
 using System;
-using System.Collections;
 using System.Globalization;
 using System.Runtime.Remoting;
-using System.Runtime.Remoting.Channels;
-using System.Runtime.Remoting.Channels.Tcp;
-using System.Runtime.Serialization.Formatters;
 
 namespace client
 {

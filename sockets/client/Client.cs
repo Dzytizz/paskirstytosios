@@ -39,12 +39,12 @@ namespace client
             catch (OperationCanceledException e)
             {
                 Console.WriteLine("Since math operation was cancelled, switching to response reading mode instead.");
-                while (true) 
+                while (true)
                 {
                     ReadResponse();
                 }
             }
-            catch (Exception e) 
+            catch (Exception e)
             {
                 Console.WriteLine(e.Message);
             }

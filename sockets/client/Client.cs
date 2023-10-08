@@ -9,60 +9,118 @@ namespace client
 {
     internal class Client
     {
-        private static readonly char ExitChar = 'q';
+        private const string ServerIP = "127.0.0.1";
+        private const int Port = 12345;
+        private const char ExitChar = 'q';
+
+        private static UdpClient udpClient;
+        private static IPEndPoint serverEndPoint;
 
         static void Main(string[] args)
         {
-            string serverIP = "127.0.0.1"; // Replace with the server's IP address
-            int serverPort = 12345;
-            UdpClient udpClient = new UdpClient();
-            udpClient.Connect(serverIP, serverPort);
+            // Initialize
+            udpClient = new UdpClient();
+            udpClient.Connect(ServerIP, Port);
+            serverEndPoint = new IPEndPoint(IPAddress.Parse(ServerIP), Port);
 
+            udpClient.Send(new byte[0]);    // Register new client
+
+            Console.WriteLine("Enter 'q' to Quit at any time. Enters response reading mode.");
+
+            try
+            {
+                while (true)
+                {
+                    SendRequests();
+
+                    ReadResponse();
+                }
+            }
+            catch (OperationCanceledException e)
+            {
+                while (true) 
+                {
+                    Console.WriteLine("Since math operation was cancelled, switching to response reading mode instead.");
+                    ReadResponse();
+                }
+            }
+            catch (Exception e) 
+            {
+                Console.WriteLine(e.Message);
+            }
+            finally
+            {
+                udpClient.Close();
+            }
+        }
+
+        private static void SendRequests()
+        {
             decimal a = ReadDecimal("Enter first number: ");
             Operation op = ReadOperator("Enter operator: ");
             decimal b = ReadDecimal("Enter second number: ");
 
             Request request = new Request(a, b, op);
-
-            XmlSerializer serializer = new XmlSerializer(typeof(Request));
-            string serializedData;
-            using (MemoryStream memoryStream = new MemoryStream())
-            {
-                serializer.Serialize(memoryStream, request);
-                serializedData = Encoding.UTF8.GetString(memoryStream.ToArray());
-            }
-            byte[] sendData = Encoding.ASCII.GetBytes(serializedData);
+            string xmlText = XMLParser.SerializeToString(request);
+            byte[] sendData = Encoding.ASCII.GetBytes(xmlText);
             udpClient.Send(sendData, sendData.Length);
-            Console.WriteLine($"Sent data: {serializedData}");
+            Console.WriteLine($"Sent data: \n{xmlText}");
+        }
 
-            IPEndPoint serverEndPoint = new IPEndPoint(IPAddress.Parse(serverIP), serverPort);
-            while (true)
+        private static void ReadResponse()
+        {
+            byte[] receivedData = udpClient.Receive(ref serverEndPoint);
+            int packetCount = BitConverter.ToInt32(receivedData);
+            Console.WriteLine($"Receiving amount of packets: {packetCount}");
+
+            ResponsePacket[] responsePackets = new ResponsePacket[packetCount];
+            for (int i = 0; i < packetCount; i++)
             {
-                byte[] receivedData = udpClient.Receive(ref serverEndPoint);
-                int responseLength = BitConverter.ToInt32(receivedData);
-                Console.WriteLine($"Received response length: {responseLength}");
-                ResponsePacket[] responsePackets = new ResponsePacket[responseLength];
-                for (int i = 0; i < responseLength; i++)
+                receivedData = udpClient.Receive(ref serverEndPoint);
+                string xmlText = Encoding.ASCII.GetString(receivedData);
+                responsePackets[i] = XMLParser.DeserializeFromString<ResponsePacket>(xmlText);
+
+                Console.WriteLine($"Received packet: \n{xmlText}");
+            }
+
+            responsePackets = responsePackets.OrderBy(packet => packet.SequenceNumber).ToArray();
+            Response? response = GetResponseFromPackets(responsePackets);
+            if (response is null)
+            {
+                Console.WriteLine("Invalid response from server.");
+                return;
+            }
+            else if (response.ExceptionMessage is not null)
+            {
+                Console.WriteLine($"Received exception from server: {response.ExceptionMessage}");
+            }
+            else
+            {
+                Console.WriteLine($"Received parsed response from server: {response.Result}");
+            }
+        }
+
+        // Tries to add all response packet contents into a string and parse it as Response object
+        private static Response? GetResponseFromPackets(ResponsePacket[] packets)
+        {
+            XmlSerializer serializer = new XmlSerializer(typeof(Response));
+            StringBuilder responseData = new StringBuilder();
+            foreach (ResponsePacket packet in packets)
+            {
+                responseData.Append(Encoding.ASCII.GetString(packet.Bytes));
+            }
+
+            try
+            {
+                using (StringReader stringReader = new StringReader(responseData.ToString()))
                 {
-                    receivedData = udpClient.Receive(ref serverEndPoint);
-                    responsePackets[i] = new ResponsePacket(i, receivedData);
-                    Console.WriteLine($"Received packet: {Encoding.ASCII.GetString(receivedData)}");
+                    return serializer.Deserialize(stringReader) as Response;
                 }
-                responsePackets = responsePackets.OrderBy(packet => packet.SequenceNumber).ToArray();
-                Response? response = GetResponseFromPackets(responsePackets);
-                if (response is null)
-                {
-                    Console.WriteLine("Invalid response from server.");
-                    continue;
-                }
-                else if (response.ExceptionMessage is not null)
-                {
-                    Console.WriteLine($"Received exception from server: {response.ExceptionMessage}");
-                }
-                else
-                {
-                    Console.WriteLine($"Received response from server: {response.Result}");
-                }
+            }
+            catch (InvalidOperationException e)
+            {
+                Console.WriteLine(e.Message);
+                return null;
             }
         }
 
@@ -117,29 +175,6 @@ namespace client
             }
 
             return OperationHelper.GetOperation(result);
-        }
-
-        private static Response? GetResponseFromPackets(ResponsePacket[] packets)
-        {
-            XmlSerializer serializer = new XmlSerializer(typeof(Response));
-            StringBuilder responseData = new StringBuilder();
-            foreach (ResponsePacket packet in packets)
-            {
-                responseData.Append(Encoding.UTF8.GetString(packet.Bytes));
-            }
-
-            try
-            {
-                using (StringReader stringReader = new StringReader(responseData.ToString()))
-                {
-                    return serializer.Deserialize(stringReader) as Response;
-                }
-            }
-            catch (InvalidOperationException e)
-            {
-                Console.WriteLine(e.Message);
-                return null;
-            }
         }
     }
 }

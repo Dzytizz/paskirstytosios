@@ -8,59 +8,60 @@ namespace server
 {
     internal class Server
     {
-        private const int PacketSize = 64;
-        private static HashSet<IPEndPoint> connectedClients = new();
+        private const int Port = 12345;
+        private const int PacketSize = 128;
+
+        private static UdpClient listener;
+        private static HashSet<IPEndPoint> clientEndpoints;
+        private static Calculator calculator;
 
         static void Main(string[] args)
         {
-            int port = 12345;
-            UdpClient listener = new UdpClient(port);
-            Console.WriteLine($"Server is listening on port {port}.");
-            IPEndPoint clientEndPoint = new IPEndPoint(IPAddress.Any, port);
+            // Initialize
+            listener = new UdpClient(Port);
+            clientEndpoints = new HashSet<IPEndPoint>();
+            calculator = new Calculator();
+            Console.WriteLine($"Server is listening on port {Port}.");
+            Console.WriteLine("Waiting for requests.");
+            IPEndPoint clientEndPoint = new IPEndPoint(IPAddress.Any, Port);
 
             try
             {
                 while (true)
                 {
-                    Console.WriteLine("Waiting for requests.");
                     byte[] receivedBytes = listener.Receive(ref clientEndPoint);
-                    if (!connectedClients.Contains(clientEndPoint))
+                    if (receivedBytes.Length == 0 && !clientEndpoints.Contains(clientEndPoint)) // If new client, add to list
                     {
-                        connectedClients.Add(clientEndPoint);
-                        Console.WriteLine($"New client sent request to server: {clientEndPoint}.");
+                        clientEndpoints.Add(clientEndPoint);
+                        Console.WriteLine($"New client connected to server: {clientEndPoint}.");
+                        continue;
                     }
-
-                    string receivedData = Encoding.ASCII.GetString(receivedBytes);
-                    Console.WriteLine($"Received data from {clientEndPoint}: {receivedData}");
-
-                    XmlSerializer serializer = new XmlSerializer(typeof(Request));
-                    Request? request;
-                    using (StringReader stringReader = new StringReader(receivedData))
+                    else // Else do calculation
                     {
-                        request = serializer.Deserialize(stringReader) as Request;
-                        if (request is null)
+                        string receivedData = Encoding.ASCII.GetString(receivedBytes);
+                        Console.WriteLine($"Received data from {clientEndPoint}: \n{receivedData}");
+
+                        Response response = new Response();
+                        decimal result = 0;
+                        try
                         {
-                            Console.WriteLine($"Invalid request from {clientEndPoint}.");
-                            continue;
+                            Request? request = XMLParser.DeserializeFromString<Request>(receivedData);  // Try form response from request
+                            if (request is null)
+                            {
+                                Console.WriteLine($"Wrong request from client {clientEndPoint}.");
+                                continue;
+                            }
+                            result = calculator.Calculate(request.A, request.B, request.Operation);
+                            response.Result = result;
                         }
-                    }
+                        catch (Exception e) // If calculation fails add error message to response
+                        {
+                            Console.WriteLine(e.Message);
+                            response.ExceptionMessage = e.Message;
+                        }
 
-                    Response response = new Response();
-
-                    decimal result = 0;
-                    Calculator calculator = new Calculator();
-                    try
-                    {
-                        result = calculator.Calculate(request.A, request.B, request.Operation);
-                        response.Result = result;
+                        TrySendToAllClients(listener, response);    // Send response to all connected clients
                     }
-                    catch (Exception e)
-                    {
-                        Console.WriteLine(e.Message);
-                        response.ExceptionMessage = e.Message;
-                    }
-
-                    TrySendToAllClients(listener, response);
                 }
             }
             catch (SocketException e)
@@ -75,35 +76,38 @@ namespace server
 
         private static void TrySendToAllClients(UdpClient listener, Response response)
         {
-            ResponsePacket[] responsePackets = SplitResponseIntoPackets(response, PacketSize);
+            // Split response into packets and randomize (to test udp mechanism in client)
+            ResponsePacket[] responsePackets = SplitResponseIntoPackets(response, PacketSize);  
+            responsePackets = responsePackets.OrderBy(x => Guid.NewGuid()).ToArray();
 
-            foreach (var client in connectedClients)
+            foreach (var client in clientEndpoints)
             {
                 Console.WriteLine($"Sending response to {client} as {responsePackets.Length} packets.");
                 byte[] responseLength = BitConverter.GetBytes(responsePackets.Length);
                 listener.Send(responseLength, responseLength.Length, client);
                 foreach (ResponsePacket packet in responsePackets)
                 {
-                    listener.Send(packet.Bytes, packet.Bytes.Length, client);
-                    Console.WriteLine($"Packet {packet.SequenceNumber}: {Encoding.ASCII.GetString(packet.Bytes)}");
+                    string xmlText = XMLParser.SerializeToString(packet);
+                    byte[] bytes = Encoding.ASCII.GetBytes(xmlText);
+
+                    listener.Send(bytes, bytes.Length, client);
+                    Console.WriteLine($"Packet {packet.SequenceNumber} with contents \n{Encoding.ASCII.GetString(packet.Bytes)} \nsent as: \n{xmlText}");
                 }
             }
         }
 
         private static ResponsePacket[] SplitResponseIntoPackets(Response response, int packetSize)
         {
-            XmlSerializer serializer = new XmlSerializer(typeof(Response));
-            string responseData;
-            using (MemoryStream memoryStream = new MemoryStream())
-            {
-                serializer.Serialize(memoryStream, response);
-                responseData = Encoding.UTF8.GetString(memoryStream.ToArray());
-            }
+            string xmlText = XMLParser.SerializeToString(response);
 
-            ResponsePacket[] packets = new ResponsePacket[responseData.Length / packetSize + 1];
+            string emptyPacket = XMLParser.SerializeToString(new ResponsePacket(99, new byte[0]));
+            int charCount = 8;
+            int remainingLength = packetSize - emptyPacket.Length - charCount;
+
+            ResponsePacket[] packets = new ResponsePacket[xmlText.Length / remainingLength + 1];
             for (int i = 0; i < packets.Length; i++)
             {
-                packets[i] = new ResponsePacket(i, Encoding.ASCII.GetBytes(responseData.Substring(i * packetSize, Math.Min(packetSize, responseData.Length - i * packetSize))));
+                packets[i] = new ResponsePacket(i, Encoding.ASCII.GetBytes(xmlText.Substring(i * remainingLength, Math.Min(remainingLength, xmlText.Length - i * remainingLength))));
             }
 
             return packets;
